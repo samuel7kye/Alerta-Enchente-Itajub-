@@ -1,0 +1,27 @@
+{
+  "pontos": [
+    {
+      "id": "varginha",
+      "bairro": "Varginha",
+      "ponto": "Rio Sapucaí",
+      "latitude": -22.44,
+      "longitude": -45.45
+    },
+    {
+      "id": "medicina",
+      "bairro": "Medicina",
+      "ponto": "Ribeirão José Pereira",
+      "latitude": -22.42,
+      "longitude": -45.45
+    },
+    {
+      "id": "sao-sebastiao",
+      "bairro": "São Sebastião",
+      "ponto": "Ribeirão Anhumas",
+      "latitude": -22.41,
+      "longitude": -45.43
+    }
+  ],
+  "alertas": [],
+  "relatos": []
+}
