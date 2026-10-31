@@ -2,6 +2,6 @@
   "version": 2,
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.js" },
-    { "src": "/(.*)", "dest": "/Alerta Enchentes Itajubá.html" }
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
