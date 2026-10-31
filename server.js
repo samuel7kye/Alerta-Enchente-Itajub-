@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const app = express();
 const PORT = Number(process.env.PORT || 5150);
 const ROOT = __dirname;
-const DB_FILE = path.join(ROOT, 'data.json');
+const DB_FILE = process.env.DATA_FILE || path.join(ROOT, 'data.json');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const MAX_BODY = '1mb';
 const WEATHER_URL = 'https://api.open-meteo.com/v1/forecast?latitude=-22.4258&longitude=-45.4528&current=precipitation,rain,showers&hourly=precipitation_probability,precipitation&forecast_days=1&timezone=America%2FSao_Paulo';
@@ -34,9 +34,13 @@ function loadDb() {
 function persist() {
   const snapshot = JSON.stringify(db, null, 2);
   writeQueue = writeQueue.then(async () => {
-    const temp = DB_FILE + '.tmp';
-    await fs.promises.writeFile(temp, snapshot, 'utf8');
-    await fs.promises.rename(temp, DB_FILE);
+    try {
+      const temp = DB_FILE + '.tmp';
+      await fs.promises.writeFile(temp, snapshot, 'utf8');
+      await fs.promises.rename(temp, DB_FILE);
+    } catch (e) {
+      console.error('Falha ao persistir dados (sistema de arquivos somente leitura?):', e.message);
+    }
   });
   return writeQueue;
 }
@@ -109,9 +113,14 @@ app.patch('/api/pontos/:id', admin, async (req, res, next) => {
   p.status = req.body.status; p.ts = new Date().toISOString();
   try { await persist(); res.json(p); } catch (e) { next(e); }
 });
-app.use(express.static(ROOT, { index: 'Alerta Enchentes Itajubá.html', extensions: ['html'] }));
+app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', extensions: ['html'] }));
 app.use((err, req, res, next) => { console.error(err); if (res.headersSent) return next(err); res.status(500).json({ error: 'Erro interno ao salvar os dados.' }); });
 
 db = loadDb();
 persist().catch(e => console.error('Falha ao inicializar persistência:', e));
-app.listen(PORT, () => console.log(`Alerta Enchentes Itajubá ativo em http://localhost:${PORT}`));
+
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Alerta Enchentes Itajubá ativo em http://localhost:${PORT}`));
+}

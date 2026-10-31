@@ -16,10 +16,11 @@ async function wait() {
   throw new Error('Servidor não iniciou');
 }
 test('API de relatos, autenticação, alertas e clima', async t => {
-  server=spawn(process.execPath,[path.join(__dirname,'server.js')],{cwd:TMP,env:{...process.env,PORT:String(PORT),ADMIN_TOKEN:'teste-seguro'},stdio:'ignore'});
+  server=spawn(process.execPath,[path.join(__dirname,'server.js')],{cwd:TMP,env:{...process.env,PORT:String(PORT),ADMIN_TOKEN:'teste-seguro',DATA_FILE:path.join(TMP,'data.json')},stdio:'ignore'});
   t.after(async()=>{server.kill(); await new Promise(resolve=>server.once('exit',resolve)); fs.rmSync(TMP,{recursive:true,force:true});});
   await wait();
-  let r=await fetch(base+'/api/status'); let data=await r.json();
+  let r=await fetch(base+'/'); const page=await r.text(); assert.ok(page.includes('Alerta Enchentes'), 'pagina estatica nao servida');
+  r=await fetch(base+'/api/status'); let data=await r.json();
   assert.equal(r.status,200); assert.equal(data.pontos.length,3);
   r=await fetch(base+'/api/relatos',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({bairro:'Varginha',tipo:'Rua alagada',descricao:'Água subindo na rua'})});
   assert.equal(r.status,201); const relato=await r.json(); assert.ok(relato.id);
