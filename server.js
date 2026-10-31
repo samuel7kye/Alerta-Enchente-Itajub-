@@ -113,7 +113,7 @@ app.patch('/api/pontos/:id', admin, async (req, res, next) => {
   p.status = req.body.status; p.ts = new Date().toISOString();
   try { await persist(); res.json(p); } catch (e) { next(e); }
 });
-app.use(express.static(ROOT, { index: 'index.html', extensions: ['html'] }));
+app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', extensions: ['html'] }));
 app.use((err, req, res, next) => { console.error(err); if (res.headersSent) return next(err); res.status(500).json({ error: 'Erro interno ao salvar os dados.' }); });
 
 db = loadDb();
