@@ -7,7 +7,7 @@
       "latitude": -22.44,
       "longitude": -45.45,
       "status": "normal",
-      "ts": "2026-10-31T00:00:00-03:00"
+      "ts": "2026-11-04T15:00:00-03:00"
     },
     {
       "id": "medicina",
@@ -16,7 +16,7 @@
       "latitude": -22.42,
       "longitude": -45.45,
       "status": "normal",
-      "ts": "2026-10-31T00:00:00-03:00"
+      "ts": "2026-11-04T15:00:00-03:00"
     },
     {
       "id": "sao-sebastiao",
@@ -25,9 +25,24 @@
       "latitude": -22.41,
       "longitude": -45.43,
       "status": "normal",
-      "ts": "2026-10-31T00:00:00-03:00"
+      "ts": "2026-11-04T15:00:00-03:00"
     }
   ],
-  "alertas": [],
-  "relatos": []
+  "alertas": [
+    {
+      "id": "alerta-01",
+      "orgao": "Defesa Civil",
+      "tipo": "Meteorológico",
+      "descricao": "Aviso de possibilidade de pancadas de chuva e tempestades isoladas na região de Itajubá.",
+      "ts": "2026-11-04T15:00:00-03:00"
+    }
+  ],
+  "relatos": [
+    {
+      "id": "relato-01",
+      "orgao": "Polícia Civil",
+      "descricao": "Atendimento de ocorrências policiais e investigativas de rotina no município. Sem registros de interdições de vias ou emergências climáticas até o momento.",
+      "ts": "2026-11-04T15:00:00-03:00"
+    }
+  ]
 }
