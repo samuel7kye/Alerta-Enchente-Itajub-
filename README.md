@@ -209,27 +209,6 @@ Níveis são aplicados via atributo `data-s="normal|atencao|vermelho"` nos conta
 
 ---
 
-## 📦 Deploy (Vercel)
-
-O projeto já inclui `vercel.json` configurado:
-
-```json
-{
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
-  "framework": "nextjs",
-  "regions": ["gru1"]
-}
-```
-
-1. Faça push para o GitHub
-2. Importe o repositório no [Vercel](https://vercel.com)
-3. Adicione `ADMIN_TOKEN` nas **Environment Variables** do projeto
-4. Deploy automático a cada push na `main`
-
----
-
 ## 📚 Referências e créditos
 
 - **Open-Meteo** — API meteorológica gratuita: https://open-meteo.com/
