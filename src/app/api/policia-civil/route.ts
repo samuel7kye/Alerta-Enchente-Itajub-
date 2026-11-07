@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fetchLatestWeatherByBairro, fetchAllStations } from '@/lib/policia-civil';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const [bairros, stations] = await Promise.all([

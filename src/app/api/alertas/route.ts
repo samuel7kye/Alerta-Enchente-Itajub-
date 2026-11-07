@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sanitizeText, generateId } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
 function adminAuth(request: Request): boolean {

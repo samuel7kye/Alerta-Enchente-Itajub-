@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { ingestPoliciaCivilData } from '@/lib/policia-civil';
 
+export const dynamic = 'force-dynamic';
+
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
 function adminAuth(request: Request): boolean {

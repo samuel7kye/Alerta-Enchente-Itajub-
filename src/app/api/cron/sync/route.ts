@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { sincronizarTodasFontes } from '@/lib/real-data-sync';
 
+export const dynamic = 'force-dynamic';
+
 const CRON_SECRET = process.env.CRON_SECRET || 'sync-secret-change-me';
 
 export async function GET(request: Request) {
