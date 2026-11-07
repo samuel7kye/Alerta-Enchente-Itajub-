@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { data } from '@/lib/data';
+import { prisma } from '@/lib/prisma';
+import { sanitizeText, generateId } from '@/lib/utils';
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
@@ -20,35 +21,39 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const nivel = body.nivel;
-    const bairro = data.sanitizeText(body.bairro, 80);
-    const descricao = data.sanitizeText(body.descricao, 400);
+    const bairro = sanitizeText(body.bairro, 80);
+    const descricao = sanitizeText(body.descricao, 400);
 
     if (!['amarelo', 'vermelho', 'verde'].includes(nivel) || !bairro || !descricao) {
       return NextResponse.json({ error: 'Nível, bairro e mensagem são obrigatórios.' }, { status: 400 });
     }
 
-    const rec = {
-      id: data.generateId(),
-      ts: new Date().toISOString(),
-      nivel,
-      bairro,
-      descricao,
-    };
+    const rec = await prisma.alerta.create({
+      data: {
+        id: generateId(),
+        nivel,
+        bairro,
+        descricao,
+        ts: new Date(),
+      },
+    });
 
-    const db = data.getDb();
-    db.alertas.unshift(rec);
-    db.alertas = db.alertas.slice(0, 500);
+    const ponto = await prisma.ponto.findFirst({
+      where: { bairro: { equals: bairro } },
+    });
 
-    const ponto = db.pontos.find(
-      (p) => p.bairro.toLocaleLowerCase('pt-BR') === bairro.toLocaleLowerCase('pt-BR')
-    );
+    let pontosAtualizados = await prisma.ponto.findMany({ orderBy: { bairro: 'asc' } });
+
     if (ponto) {
-      ponto.status = nivel === 'vermelho' ? 'vermelho' : nivel === 'amarelo' ? 'atencao' : 'normal';
-      ponto.ts = rec.ts;
+      const pontoStatus = nivel === 'vermelho' ? 'vermelho' : nivel === 'amarelo' ? 'atencao' : 'normal';
+      await prisma.ponto.update({
+        where: { id: ponto.id },
+        data: { status: pontoStatus, ts: new Date() },
+      });
+      pontosAtualizados = await prisma.ponto.findMany({ orderBy: { bairro: 'asc' } });
     }
 
-    await data.persist();
-    return NextResponse.json({ alerta: rec, pontos: db.pontos }, { status: 201 });
+    return NextResponse.json({ alerta: rec, pontos: pontosAtualizados }, { status: 201 });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Erro interno ao salvar o alerta.' }, { status: 500 });

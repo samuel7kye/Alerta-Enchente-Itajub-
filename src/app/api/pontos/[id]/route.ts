@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { data } from '@/lib/data';
+import { prisma } from '@/lib/prisma';
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
@@ -26,17 +26,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Status inválido.' }, { status: 400 });
     }
 
-    const db = data.getDb();
-    const ponto = db.pontos.find((p) => p.id === id);
+    const ponto = await prisma.ponto.findUnique({ where: { id } });
     if (!ponto) {
       return NextResponse.json({ error: 'Ponto não encontrado.' }, { status: 404 });
     }
 
-    ponto.status = status;
-    ponto.ts = new Date().toISOString();
-    await data.persist();
+    const updated = await prisma.ponto.update({
+      where: { id },
+      data: { status, ts: new Date() },
+    });
 
-    return NextResponse.json(ponto);
+    return NextResponse.json(updated);
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: 'Erro interno ao atualizar o ponto.' }, { status: 500 });

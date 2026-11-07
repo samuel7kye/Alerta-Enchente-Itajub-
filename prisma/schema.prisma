@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Ponto {
+  id        String   @id @default(cuid())
+  bairro    String
+  ponto     String
+  latitude  Float
+  longitude Float
+  status    String   @default("normal")
+  ts        DateTime @default(now()) @updatedAt
+
+  @@index([bairro])
+  @@map("pontos")
+}
+
+model Alerta {
+  id        String   @id @default(cuid())
+  nivel     String
+  bairro    String
+  descricao String
+  ts        DateTime @default(now())
+
+  @@index([bairro])
+  @@index([ts])
+  @@map("alertas")
+}
+
+model Relato {
+  id        String   @id @default(cuid())
+  bairro    String
+  tipo      String
+  descricao String
+  foto      String?
+  ts        DateTime @default(now())
+
+  @@index([bairro])
+  @@index([ts])
+  @@map("relatos")
+}
+
+model BairroItajuba {
+  id         String   @id @default(cuid())
+  nome       String   @unique
+  latitude   Float
+  longitude  Float
+  hasStation Boolean  @default(false)
+
+  policiaCivilStations PoliciaCivilStation[]
+  weatherSnapshots     WeatherSnapshot[]
+
+  @@map("bairros_itajuba")
+}
+
+model PoliciaCivilStation {
+  id        String   @id @default(cuid())
+  nome      String
+  bairroId  String
+  latitude  Float
+  longitude Float
+  ativo     Boolean  @default(true)
+
+  bairro    BairroItajuba    @relation(fields: [bairroId], references: [id])
+  weatherData PoliciaCivilWeatherData[]
+
+  @@index([bairroId])
+  @@map("policia_civil_stations")
+}
+
+model PoliciaCivilWeatherData {
+  id              String   @id @default(cuid())
+  stationId       String
+  precipitacaoMm  Float
+  nivelRioCm      Float?
+  status          String
+  observacao      String?
+  fonte           String   @default("Polícia Civil - Itajubá")
+  coletadoEm      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  station PoliciaCivilStation @relation(fields: [stationId], references: [id])
+
+  @@index([stationId])
+  @@index([coletadoEm])
+  @@map("policia_civil_weather")
+}
+
+model WeatherSnapshot {
+  id             String   @id @default(cuid())
+  bairroId       String
+  provider       String
+  rainMm         Float
+  next6hMaxRainMm Float
+  next6hMaxProbability Int
+  status         String
+  message        String
+  observedAt     DateTime
+  fetchedAt      DateTime @default(now())
+
+  bairro BairroItajuba @relation(fields: [bairroId], references: [id])
+
+  @@index([bairroId])
+  @@index([fetchedAt])
+  @@map("weather_snapshots")
+}
+
+model SyncLog {
+  id        String   @id @default(cuid())
+  fonte     String
+  status    String
+  detalhes  String?
+  duracaoSeg Float?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("sync_logs")
+}

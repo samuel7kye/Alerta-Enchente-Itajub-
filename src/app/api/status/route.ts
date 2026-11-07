@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { data } from '@/lib/data';
+import { prisma } from '@/lib/prisma';
 
 export async function GET() {
-  const db = data.getDb();
-  const alertas = [...db.alertas].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, 30);
-  const relatos = [...db.relatos].sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts)).slice(0, 30);
-  return NextResponse.json({ pontos: db.pontos, alertas, relatos });
+  const [pontos, alertas, relatos] = await Promise.all([
+    prisma.ponto.findMany({ orderBy: { bairro: 'asc' } }),
+    prisma.alerta.findMany({ orderBy: { ts: 'desc' }, take: 30 }),
+    prisma.relato.findMany({ orderBy: { ts: 'desc' }, take: 30 }),
+  ]);
+
+  return NextResponse.json({ pontos, alertas, relatos });
 }
