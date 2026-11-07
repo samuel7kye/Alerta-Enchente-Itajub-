@@ -220,10 +220,7 @@ Níveis são aplicados via atributo `data-s="normal|atencao|vermelho"` nos conta
 
 ## 👥 Autores
 
-Desenvolvido como trabalho escolar de **Gerência de Software / Engenharia de Software**.
-
-- **Repositório**: https://github.com/SilencerReigns/Staander
-- **Branch principal**: `main` (backend original) / `feat/backend-alertas` (esta versão Next.js)
+- **Repositório**: (https://github.com/samuel7kye/Alerta-Enchente-Itajub-)
 
 ---
 
