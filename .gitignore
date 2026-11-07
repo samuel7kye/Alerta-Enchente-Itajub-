@@ -10,3 +10,7 @@ npm-debug.log*
 coverage/
 dist/
 build/
+prisma/dev.db
+dev.db
+*.db
+*.db-journal
