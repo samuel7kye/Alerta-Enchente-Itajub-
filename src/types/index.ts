@@ -46,10 +46,15 @@ export interface StatusResponse {
 }
 
 export interface LeituraPonto {
+  chuva?: MedicaoEstacao;
+  nivel?: MedicaoEstacao;
+}
+
+export interface MedicaoEstacao {
   estacao: string;
   fonte: string;
   coletadoEm: string;
-  precipitacaoMm: number;
-  nivelRioCm: number | null;
+  valor: number;
   desatualizada: boolean;
+  referencia: boolean;
 }

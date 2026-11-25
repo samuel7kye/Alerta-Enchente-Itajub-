@@ -1,0 +1,13 @@
+.git
+.agents
+.claude
+.cursor
+.devin
+.neon
+.vercel
+.env*
+node_modules
+.next
+*.tsbuildinfo
+*.log
+coverage

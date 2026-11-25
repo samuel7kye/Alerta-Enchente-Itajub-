@@ -9,7 +9,7 @@ Sistema comunitário de monitoramento e alertas de risco de enchentes em Itajub�
 ## 📋 Funcionalidades
 
 - **Painel de situação em tempo real** — Faixa superior colorida (verde/amarelo/vermelho) indicando o pior status entre os pontos monitorados
-- **Leituras nos pontos de risco** — A consulta a cada minuto exibe chuva, nível do rio quando medido, fonte e horário da coleta da estação associada pelo bairro. Leituras com duas horas ou mais aparecem como desatualizadas.
+- **Leituras nos pontos de risco** — O painel consulta a cada minuto. Chuva e nível exibem a sua própria estação e data de coleta. Leituras com duas horas ou mais aparecem como desatualizadas.
 - **Avisos oficiais (área administrativa)** — Publicação de alertas por nível (verde/amarelo/vermelho) com atualização automática do status do ponto
 - **Relatos da comunidade** — Moradores enviam relatos com bairro, tipo (rua alagada, rio subindo, bueiro entupido, etc.), descrição e foto opcional
 - **Meteorologia automatizada** — Integração com **Open-Meteo** (chuva atual, previsão 6h, probabilidade) com cache de 10 min
@@ -35,6 +35,20 @@ Sistema comunitário de monitoramento e alertas de risco de enchentes em Itajub�
 
 ## 🚀 Como rodar localmente
 
+### Com Docker Compose
+
+Com o Docker em execução, rode na raiz do projeto:
+
+```bash
+docker compose up --build
+```
+
+Abra [http://localhost:3000](http://localhost:3000). O Compose inicia um PostgreSQL local, cria as tabelas e cadastra os seis pontos de monitoramento. A coleta usa as fontes públicas. O banco fica em um volume que persiste após `docker compose down`. O PostgreSQL fica acessível apenas na rede interna do Compose.
+
+Para usar outra porta ou habilitar os endpoints administrativos, defina `APP_PORT`, `ADMIN_TOKEN` e `CRON_SECRET` conforme necessário no ambiente ou em um arquivo `.env`. A conexão do Compose é configurada automaticamente.
+
+### Sem Docker
+
 ### Pré-requisitos
 - Node.js 18+ (testado com 20.x)
 - npm 9+
@@ -43,7 +57,7 @@ Sistema comunitário de monitoramento e alertas de risco de enchentes em Itajub�
 
 ```bash
 # Clone o repositório
-git clone https://github.com/SilencerReigns/Staander.git
+git clone https://github.com/samuel7kye/Alerta-Enchente-Itajub-/ "Site Alerta Enchente"
 cd "Site Alerta Enchente"
 
 # Instale dependências
@@ -132,6 +146,12 @@ site-alerta-enchente/
 | `POST` | `/api/admin/session` | Validar token admin | Body `{token}` |
 | `PATCH` | `/api/pontos/:id` | Atualizar status do ponto | Bearer `ADMIN_TOKEN` |
 
+### Coleta das estações
+
+- O Cemaden publica a chuva horária de São Vicente e Estiva. O painel marca como referência as estações usadas para pontos de outros bairros, a até 5 km.
+- A estação ANA Itajubá (61271000) é a referência de nível para os pontos do Rio Sapucaí. Os pontos de outros rios dependem de medição de uma estação associada ao próprio bairro.
+- Com o painel aberto, `/api/status` consulta as fontes com cache de cinco minutos e grava cada amostra nova no PostgreSQL. O cron diário complementa a coleta sem visitas em Production e registra se as fontes retornaram dados recentes. Para testar com o servidor local ligado, use `node scripts/sync-cron.js` com `CRON_SECRET` configurado.
+
 ### Exemplo: Enviar relato (fetch)
 
 ```js
@@ -218,7 +238,7 @@ Níveis são aplicados via atributo `data-s="normal|atencao|vermelho"` nos conta
 
 ## 👥 Autores
 
-- **Repositório**: (https://github.com/samuel7kye/Alerta-Enchente-Itajub-)
+- [Repositório no GitHub](https://github.com/samuel7kye/Alerta-Enchente-Itajub-/)
 
 ---
 
