@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { Ponto, Alerta, Relato, WeatherData, StatusResponse } from '@/types';
+import type { Ponto, Alerta, Relato, WeatherData, StatusResponse, MedicaoEstacao } from '@/types';
 
 const TZ = 'America/Sao_Paulo';
 const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -14,6 +14,19 @@ function when(ts?: string): string {
   const parts: Record<string, string> = {};
   fmt.formatToParts(d).forEach((x) => { parts[x.type] = x.value; });
   return `${parts.day}/${parts.month} ${parts.hour}:${parts.minute}`;
+}
+
+function Medicao({ leitura, rotulo, unidade }: { leitura: MedicaoEstacao; rotulo: string; unidade: string }) {
+  return (
+    <div className="leitura">
+      <p>{rotulo} <strong>{medida.format(leitura.valor)} {unidade}</strong></p>
+      <p className="stamp">{leitura.referencia && 'Referência · '}{leitura.estacao} · {leitura.fonte}</p>
+      <p className="stamp">
+        Coleta em <time dateTime={leitura.coletadoEm}>{when(leitura.coletadoEm)}</time>
+        {leitura.desatualizada && <strong> · Desatualizada</strong>}
+      </p>
+    </div>
+  );
 }
 
 const STATUS = {
@@ -215,18 +228,18 @@ export default function HomePage() {
     const hot = pontos.filter(p => p.status === key);
     const names = listJoin(hot.map(p => p.bairro));
     const head = key ? `${STATUS[key].label} em ${names}` : 'Situação dos pontos indisponível';
-    const latest = as.find(a => hot.some(p => p.bairro === a.bairro) && NIVEL[a.nivel].status === key);
-    const detail = latest?.descricao ?? 'Consulte os avisos e acompanhe os comunicados da Defesa Civil.';
+    const latest = key !== 'normal' && as.find(a => hot.some(p => p.bairro === a.bairro) && NIVEL[a.nivel].status === key);
+    const detail = latest ? latest.descricao : 'Consulte os avisos e acompanhe os comunicados da Defesa Civil.';
     const last = Math.max(0, ...pontos.map(p => Date.parse(p.ts || '') || 0));
-    const ultimaLeitura = Object.values(leiturasPorPonto).reduce<StatusResponse['leiturasPorPonto'][string] | undefined>(
-      (maisRecente, leitura) => !maisRecente || leitura.coletadoEm > maisRecente.coletadoEm ? leitura : maisRecente,
-      undefined,
-    );
+    const ultimaLeitura = Object.values(leiturasPorPonto)
+      .flatMap(({ chuva, nivel }) => [chuva, nivel])
+      .filter((leitura): leitura is MedicaoEstacao => leitura !== undefined)
+      .sort((a, b) => b.coletadoEm.localeCompare(a.coletadoEm))[0];
         const msg = `Alerta Enchentes Itajubá · ${head}. ${detail} Em emergência, ligue 199 (Defesa Civil).`;
 
         return (
           <>
-            <p className="kicker">Situação agora</p>
+            <p className="kicker">Status registrado dos pontos</p>
             <h2>{head}</h2>
             <p>{detail}</p>
             <div className="row">
@@ -244,7 +257,7 @@ export default function HomePage() {
             )}
             {error && <p role="status">{error}</p>}
             {weather && (
-              <p>Meteorologia · {weather.provider} · {medida.format(weather.rainMm)} mm de chuva observada ·
+              <p>Meteorologia · {weather.provider} · {medida.format(weather.rainMm)} mm de chuva estimada ·
                 probabilidade máxima nas próximas 6 h de {weather.next6hMaxProbability}%. {weather.disclaimer}
               </p>
             )}
@@ -407,19 +420,13 @@ export default function HomePage() {
                   <p className="local">{p.ponto || ''}</p>
                   {st && <span className="pill">{st.label}</span>}
                   {p.ts && <p className="stamp">Status em <time dateTime={p.ts}>{when(p.ts)}</time></p>}
-                  {leitura ? (
-                    <div className="leitura">
-                      <p>Chuva na estação <strong>{medida.format(leitura.precipitacaoMm)} mm</strong></p>
-                      {leitura.nivelRioCm !== null && (
-                        <p>Nível do rio na estação <strong>{medida.format(leitura.nivelRioCm)} cm</strong></p>
-                      )}
-                      <p className="stamp">{leitura.estacao} · {leitura.fonte}</p>
-                      <p className="stamp">
-                        Coleta em <time dateTime={leitura.coletadoEm}>{when(leitura.coletadoEm)}</time>
-                        {leitura.desatualizada && <strong> · Desatualizada</strong>}
-                      </p>
-                    </div>
-                  ) : <p className="leitura stamp">Sem leitura de estação disponível.</p>}
+                  {leitura?.chuva && (
+                    <Medicao leitura={leitura.chuva} rotulo={leitura.chuva.fonte === 'CEMADEN' ? 'Chuva acumulada em 1 h' : 'Chuva na estação'} unidade="mm" />
+                  )}
+                  {leitura?.nivel ? <Medicao leitura={leitura.nivel} rotulo="Nível do rio na estação" unidade="cm" /> : (
+                    <p className="leitura stamp">Sem medição de nível para este ponto.</p>
+                  )}
+                  {!leitura?.chuva && <p className="stamp">Sem medição de chuva disponível.</p>}
                   {isAdmin && (
                     <label className="team-set" htmlFor={`set-${p.id}`}>
                       Alterar status (equipe)

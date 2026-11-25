@@ -4,17 +4,9 @@ import { sincronizarTodasFontes } from '@/lib/real-data-sync';
 
 export const dynamic = 'force-dynamic';
 
-const CRON_SECRET = process.env.CRON_SECRET || 'sync-secret-change-me';
-
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  const url = new URL(request.url);
-  const secret = url.searchParams.get('secret');
-
-  // Verificar autenticação via header ou query param
-  const providedSecret = authHeader?.replace('Bearer ', '') || secret;
-  
-  if (providedSecret !== CRON_SECRET) {
+  const segredo = process.env.CRON_SECRET;
+  if (!segredo || request.headers.get('authorization') !== `Bearer ${segredo}`) {
     return NextResponse.json(
       { error: 'Não autorizado. Configure CRON_SECRET.' },
       { status: 401 }
@@ -32,18 +24,17 @@ export async function GET(request: Request) {
     await prisma.syncLog.create({
       data: {
         fonte: 'cron',
-        status: 'success',
+        status: resultado.status,
         detalhes: JSON.stringify(resultado),
         duracaoSeg: duracao,
       },
-    }).catch(() => {}); // Não falhar se tabela não existir
+    });
     
     return NextResponse.json({
-      success: true,
-      message: 'Sincronização concluída',
+      success: resultado.status !== 'no_recent_readings',
       resultado,
       duracaoSeg: duracao,
-    });
+    }, { status: resultado.status === 'no_recent_readings' ? 502 : 200 });
   } catch (error) {
     const duracao = (Date.now() - inicio) / 1000;
     console.error('[CRON] Erro na sincronização:', error);
@@ -61,7 +52,6 @@ export async function GET(request: Request) {
       { 
         success: false, 
         error: 'Erro interno na sincronização',
-        detail: (error as Error).message 
       },
       { status: 500 }
     );

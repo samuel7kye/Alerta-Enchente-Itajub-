@@ -1,7 +1,11 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
-import type { LeituraPonto } from '@/types';
+import { ANA_SAPUCAI_ID, CEMADEN_PLUVIOMETROS } from '@/lib/station-sync';
+import type { LeituraPonto, MedicaoEstacao } from '@/types';
 
 const PRAZO_LEITURA_MS = 2 * 60 * 60 * 1000;
+const RAIO_PLUVIOMETRO_KM = 5;
+const PONTOS_SAPUCAI = new Set(['centro-sapucai', 'varginha', 'ponte-alta']);
 const FONTE_LEGADA = 'Polícia Civil - Itajubá';
 const OBSERVACOES_SEED = [
   'Chuva intensa - risco de alagamento',
@@ -10,73 +14,89 @@ const OBSERVACOES_SEED = [
 ];
 
 export async function buscarLeiturasDosPontos(
-  pontos: { id: string; bairro: string }[]
+  pontos: { id: string; bairro: string; latitude: number; longitude: number }[]
 ): Promise<Record<string, LeituraPonto>> {
   if (pontos.length === 0) return {};
-
   const agora = new Date();
-  const estacoes = await prisma.policiaCivilStation.findMany({
-    where: { ativo: true, bairro: { nome: { in: pontos.map(ponto => ponto.bairro) } } },
-    select: {
-      nome: true,
-      bairro: { select: { nome: true } },
-      weatherData: {
-        where: {
-          coletadoEm: { lte: agora },
-          precipitacaoMm: { gte: 0, lt: Number.MAX_VALUE },
-          fonte: { not: 'simulacao' },
-          // A carga inicial antiga usava a fonte padrão e uma destas mensagens fixas.
-          OR: [
-            { fonte: { not: FONTE_LEGADA } },
-            { observacao: null },
-            { observacao: { notIn: OBSERVACOES_SEED } },
-          ],
-        },
-        orderBy: [{ coletadoEm: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
-        take: 1,
-        select: {
-          coletadoEm: true,
-          createdAt: true,
-          precipitacaoMm: true,
-          nivelRioCm: true,
-          fonte: true,
-          observacao: true,
+  const limite = agora.getTime() - PRAZO_LEITURA_MS;
+  const filtro: Prisma.PoliciaCivilWeatherDataWhereInput = {
+    coletadoEm: { lte: agora },
+    precipitacaoMm: { gte: 0, lt: Number.MAX_VALUE },
+    fonte: { not: 'simulacao' },
+    // Seeds antigos usavam a fonte padrão e uma destas mensagens fixas.
+    OR: [
+      { fonte: { not: FONTE_LEGADA } },
+      { observacao: null },
+      { observacao: { notIn: OBSERVACOES_SEED } },
+    ],
+  };
+  const bairros = pontos.map(ponto => ponto.bairro);
+  const estacoesDe = (ids: string[], where: Prisma.PoliciaCivilWeatherDataWhereInput) =>
+    prisma.policiaCivilStation.findMany({
+      where: { ativo: true, OR: [{ id: { in: ids } }, { bairro: { nome: { in: bairros } } }] },
+      select: {
+        id: true, nome: true, latitude: true, longitude: true,
+        bairro: { select: { nome: true } },
+        weatherData: {
+          where,
+          orderBy: [{ coletadoEm: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { coletadoEm: true, precipitacaoMm: true, nivelRioCm: true, fonte: true, observacao: true },
         },
       },
-    },
-  });
+    });
 
-  const porBairro = new Map<string, (typeof estacoes)[number]>();
-  for (const estacao of estacoes) {
+  const [pluviometros, fluviometros] = await Promise.all([
+    estacoesDe(CEMADEN_PLUVIOMETROS, filtro),
+    estacoesDe([ANA_SAPUCAI_ID], { ...filtro, nivelRioCm: { gt: -Number.MAX_VALUE, lt: Number.MAX_VALUE } }),
+  ]);
+
+  type Estacao = (typeof pluviometros)[number];
+  function medicao(estacao: Estacao, valor: number, referencia: boolean): MedicaoEstacao {
     const leitura = estacao.weatherData[0];
-    if (!leitura) continue;
-
-    const anterior = porBairro.get(estacao.bairro.nome)?.weatherData[0];
-    if (!anterior || leitura.coletadoEm > anterior.coletadoEm ||
-        (leitura.coletadoEm.getTime() === anterior.coletadoEm.getTime() &&
-          leitura.createdAt > anterior.createdAt)) {
-      porBairro.set(estacao.bairro.nome, estacao);
-    }
+    const fonteImportada = leitura.observacao?.match(/^(INMET|ANA) - /)?.[1];
+    return {
+      estacao: estacao.nome,
+      fonte: leitura.fonte === FONTE_LEGADA ? fonteImportada ?? leitura.fonte : leitura.fonte,
+      coletadoEm: leitura.coletadoEm.toISOString(),
+      valor,
+      desatualizada: leitura.coletadoEm.getTime() <= limite,
+      referencia,
+    };
   }
 
   const resultado: Record<string, LeituraPonto> = Object.create(null);
   for (const ponto of pontos) {
-    const estacao = porBairro.get(ponto.bairro);
-    if (!estacao) continue;
+    const chuva = [];
+    for (const estacao of pluviometros) {
+      if (!estacao.weatherData[0]) continue;
+      const referencia = estacao.id === ANA_SAPUCAI_ID || estacao.bairro.nome !== ponto.bairro;
+      const distancia = 111.2 * Math.hypot(
+        estacao.latitude - ponto.latitude,
+        (estacao.longitude - ponto.longitude) * Math.cos(ponto.latitude * Math.PI / 180),
+      );
+      const pluviometroProximo = CEMADEN_PLUVIOMETROS.includes(estacao.id) && distancia <= RAIO_PLUVIOMETRO_KM;
+      if (referencia && !pluviometroProximo && !(estacao.id === ANA_SAPUCAI_ID && PONTOS_SAPUCAI.has(ponto.id))) continue;
 
-    const leitura = estacao.weatherData[0];
-    // Importações antigas do cron usavam a fonte padrão e registravam a origem na observação.
-    const fonteImportada = leitura.observacao?.match(/^(INMET|ANA) - /)?.[1];
-    resultado[ponto.id] = {
-      estacao: estacao.nome,
-      fonte: leitura.fonte === FONTE_LEGADA ? fonteImportada ?? leitura.fonte : leitura.fonte,
-      coletadoEm: leitura.coletadoEm.toISOString(),
-      precipitacaoMm: leitura.precipitacaoMm,
-      nivelRioCm: Number.isFinite(leitura.nivelRioCm) ? leitura.nivelRioCm : null,
-      desatualizada: agora.getTime() - leitura.coletadoEm.getTime() >= PRAZO_LEITURA_MS,
-    };
+      chuva.push({ distancia, leitura: medicao(estacao, estacao.weatherData[0].precipitacaoMm, referencia) });
+    }
+    chuva.sort((a, b) => Number(a.leitura.desatualizada) - Number(b.leitura.desatualizada)
+      || Number(a.leitura.referencia) - Number(b.leitura.referencia)
+      || (a.leitura.referencia ? a.distancia - b.distancia : 0)
+      || b.leitura.coletadoEm.localeCompare(a.leitura.coletadoEm));
+
+    const niveis = [];
+    for (const estacao of fluviometros) {
+      const nivel = estacao.weatherData[0]?.nivelRioCm;
+      if (nivel === undefined || nivel === null) continue;
+      const referencia = estacao.id === ANA_SAPUCAI_ID;
+      if (referencia ? !PONTOS_SAPUCAI.has(ponto.id) : estacao.bairro.nome !== ponto.bairro) continue;
+      niveis.push(medicao(estacao, nivel, referencia));
+    }
+    niveis.sort((a, b) => b.coletadoEm.localeCompare(a.coletadoEm) || Number(a.referencia) - Number(b.referencia));
+
+    if (chuva[0] || niveis[0]) resultado[ponto.id] = { chuva: chuva[0]?.leitura, nivel: niveis[0] };
   }
-
   return resultado;
 }
 

@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { readFileSync } from 'node:fs';
+import { PrismaClient, type Prisma } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -39,15 +40,9 @@ async function main() {
   console.log(`✅ ${createdBairros.length} bairros criados`);
 
   // 2. Pontos de monitoramento (rios/ribeirões)
-  const pontos = [
-    { id: 'varginha', bairro: 'Varginha', ponto: 'Rio Sapucaí', latitude: -22.44, longitude: -45.45 },
-    { id: 'medicina', bairro: 'Medicina', ponto: 'Ribeirão José Pereira', latitude: -22.42, longitude: -45.45 },
-    { id: 'sao-sebastiao', bairro: 'São Sebastião', ponto: 'Ribeirão Anhumas', latitude: -22.41, longitude: -45.43 },
-    { id: 'centro-sapucai', bairro: 'Centro', ponto: 'Rio Sapucaí - Centro', latitude: -22.4189, longitude: -45.4531 },
-    { id: 'santo-antonio', bairro: 'Santo Antônio', ponto: 'Ribeirão Anhumas - Santo Antônio', latitude: -22.4256, longitude: -45.4478 },
-    { id: 'ponte-alta', bairro: 'Ponte Alta', ponto: 'Rio Sapucaí - Ponte Alta', latitude: -22.4380, longitude: -45.4420 },
-  ];
-
+  const pontos: Prisma.PontoCreateManyInput[] = JSON.parse(
+    readFileSync(new URL('./pontos-monitorados.json', import.meta.url), 'utf8')
+  );
   const createdPontos = await Promise.all(
     pontos.map((p) => prisma.ponto.create({ data: p }))
   );
