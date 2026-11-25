@@ -42,10 +42,14 @@ export interface StatusResponse {
   pontos: Ponto[];
   alertas: Alerta[];
   relatos: Relato[];
+  leiturasPorPonto: Record<string, LeituraPonto>;
 }
 
-export interface Database {
-  pontos: Ponto[];
-  alertas: Alerta[];
-  relatos: Relato[];
+export interface LeituraPonto {
+  estacao: string;
+  fonte: string;
+  coletadoEm: string;
+  precipitacaoMm: number;
+  nivelRioCm: number | null;
+  desatualizada: boolean;
 }

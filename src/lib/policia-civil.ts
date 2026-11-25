@@ -1,4 +1,84 @@
 import { prisma } from '@/lib/prisma';
+import type { LeituraPonto } from '@/types';
+
+const PRAZO_LEITURA_MS = 2 * 60 * 60 * 1000;
+const FONTE_LEGADA = 'Polícia Civil - Itajubá';
+const OBSERVACOES_SEED = [
+  'Chuva intensa - risco de alagamento',
+  'Atenção - monitorar nível do rio',
+  'Normal',
+];
+
+export async function buscarLeiturasDosPontos(
+  pontos: { id: string; bairro: string }[]
+): Promise<Record<string, LeituraPonto>> {
+  if (pontos.length === 0) return {};
+
+  const agora = new Date();
+  const estacoes = await prisma.policiaCivilStation.findMany({
+    where: { ativo: true, bairro: { nome: { in: pontos.map(ponto => ponto.bairro) } } },
+    select: {
+      nome: true,
+      bairro: { select: { nome: true } },
+      weatherData: {
+        where: {
+          coletadoEm: { lte: agora },
+          precipitacaoMm: { gte: 0, lt: Number.MAX_VALUE },
+          fonte: { not: 'simulacao' },
+          // A carga inicial antiga usava a fonte padrão e uma destas mensagens fixas.
+          OR: [
+            { fonte: { not: FONTE_LEGADA } },
+            { observacao: null },
+            { observacao: { notIn: OBSERVACOES_SEED } },
+          ],
+        },
+        orderBy: [{ coletadoEm: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: {
+          coletadoEm: true,
+          createdAt: true,
+          precipitacaoMm: true,
+          nivelRioCm: true,
+          fonte: true,
+          observacao: true,
+        },
+      },
+    },
+  });
+
+  const porBairro = new Map<string, (typeof estacoes)[number]>();
+  for (const estacao of estacoes) {
+    const leitura = estacao.weatherData[0];
+    if (!leitura) continue;
+
+    const anterior = porBairro.get(estacao.bairro.nome)?.weatherData[0];
+    if (!anterior || leitura.coletadoEm > anterior.coletadoEm ||
+        (leitura.coletadoEm.getTime() === anterior.coletadoEm.getTime() &&
+          leitura.createdAt > anterior.createdAt)) {
+      porBairro.set(estacao.bairro.nome, estacao);
+    }
+  }
+
+  const resultado: Record<string, LeituraPonto> = Object.create(null);
+  for (const ponto of pontos) {
+    const estacao = porBairro.get(ponto.bairro);
+    if (!estacao) continue;
+
+    const leitura = estacao.weatherData[0];
+    // Importações antigas do cron usavam a fonte padrão e registravam a origem na observação.
+    const fonteImportada = leitura.observacao?.match(/^(INMET|ANA) - /)?.[1];
+    resultado[ponto.id] = {
+      estacao: estacao.nome,
+      fonte: leitura.fonte === FONTE_LEGADA ? fonteImportada ?? leitura.fonte : leitura.fonte,
+      coletadoEm: leitura.coletadoEm.toISOString(),
+      precipitacaoMm: leitura.precipitacaoMm,
+      nivelRioCm: Number.isFinite(leitura.nivelRioCm) ? leitura.nivelRioCm : null,
+      desatualizada: agora.getTime() - leitura.coletadoEm.getTime() >= PRAZO_LEITURA_MS,
+    };
+  }
+
+  return resultado;
+}
 
 export interface PoliciaCivilWeatherRecord {
   id: string;
@@ -221,37 +301,24 @@ export async function ingestPoliciaCivilData(
 ) {
   const station = await prisma.policiaCivilStation.findUnique({
     where: { id: stationId },
-    include: { bairro: true },
+    select: { ativo: true },
   });
 
-  if (!station) {
-    throw new Error('Estação não encontrada');
+  if (!station?.ativo) {
+    throw new Error('Estação ativa não encontrada');
   }
 
-  const record = await prisma.policiaCivilWeatherData.create({
+  return prisma.policiaCivilWeatherData.create({
     data: {
       stationId,
       precipitacaoMm: data.precipitacaoMm,
       nivelRioCm: data.nivelRioCm ?? null,
       status: data.status,
+      fonte: 'Polícia Civil de Itajubá',
       observacao: data.observacao ?? null,
       coletadoEm: new Date(),
     },
   });
-
-  const ponto = await prisma.ponto.findFirst({
-    where: { bairro: station.bairro.nome },
-  });
-
-  if (ponto) {
-    const pontoStatus = data.status === 'vermelho' ? 'vermelho' : data.status === 'amarelo' ? 'atencao' : 'normal';
-    await prisma.ponto.update({
-      where: { id: ponto.id },
-      data: { status: pontoStatus, ts: new Date() },
-    });
-  }
-
-  return record;
 }
 
 export async function getBairrosWithStations() {
