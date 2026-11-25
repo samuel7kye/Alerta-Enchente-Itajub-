@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { buscarLeiturasDosPontos } from '@/lib/policia-civil';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,5 +11,9 @@ export async function GET() {
     prisma.relato.findMany({ orderBy: { ts: 'desc' }, take: 30 }),
   ]);
 
-  return NextResponse.json({ pontos, alertas, relatos });
+  const leiturasPorPonto = await buscarLeiturasDosPontos(pontos);
+  return NextResponse.json(
+    { pontos, alertas, relatos, leiturasPorPonto },
+    { headers: { 'Cache-Control': 'no-store' } }
+  );
 }

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Ponto, Alerta, Relato, WeatherData, StatusResponse } from '@/types';
+import { useState, useEffect } from 'react';
+import type { Ponto, Alerta, Relato, WeatherData, StatusResponse } from '@/types';
 
 const TZ = 'America/Sao_Paulo';
 const fmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const medida = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 
 function when(ts?: string): string {
   if (!ts) return 'sem data';
@@ -16,9 +17,9 @@ function when(ts?: string): string {
 }
 
 const STATUS = {
-  normal: { label: 'Normal', rank: 0, lvl: '34%' },
-  atencao: { label: 'Atenção', rank: 1, lvl: '67%' },
-  vermelho: { label: 'Alerta vermelho', rank: 2, lvl: '100%' },
+  normal: { label: 'Normal', rank: 0 },
+  atencao: { label: 'Atenção', rank: 1 },
+  vermelho: { label: 'Alerta vermelho', rank: 2 },
 } as const;
 
 const NIVEL = {
@@ -28,9 +29,9 @@ const NIVEL = {
 } as const;
 
 const BASE_PONTOS = [
-  { id: 'varginha', bairro: 'Varginha', ponto: 'Rio Sapucaí', latitude: -22.44, longitude: -45.45, status: 'normal' as const, ts: '2026-10-14T10:00:00-03:00' },
-  { id: 'medicina', bairro: 'Medicina', ponto: 'Ribeirão José Pereira', latitude: -22.42, longitude: -45.45, status: 'atencao' as const, ts: '2026-10-14T10:15:00-03:00' },
-  { id: 'sao-sebastiao', bairro: 'São Sebastião', ponto: 'Ribeirão Anhumas', latitude: -22.41, longitude: -45.43, status: 'vermelho' as const, ts: '2026-10-14T10:30:00-03:00' },
+  { id: 'varginha', bairro: 'Varginha', ponto: 'Rio Sapucaí', latitude: -22.44, longitude: -45.45 },
+  { id: 'medicina', bairro: 'Medicina', ponto: 'Ribeirão José Pereira', latitude: -22.42, longitude: -45.45 },
+  { id: 'sao-sebastiao', bairro: 'São Sebastião', ponto: 'Ribeirão Anhumas', latitude: -22.41, longitude: -45.43 },
 ];
 
 const TIPO_OPTIONS = [
@@ -76,7 +77,7 @@ async function copyText(txt: string): Promise<boolean> {
 }
 
 export default function HomePage() {
-  const [status, setStatus] = useState<StatusResponse | null>(null);
+  const [leiturasPorPonto, setLeiturasPorPonto] = useState<StatusResponse['leiturasPorPonto']>({});
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,32 +133,50 @@ export default function HomePage() {
     }
   }
 
-  async function fetchData() {
-    try {
-      const [statusRes, weatherRes] = await Promise.all([
-        fetch('/api/status'),
-        fetch('/api/weather'),
-      ]);
-      if (statusRes.ok) {
-        const data = await statusRes.json();
-        setStatus(data);
-        setDbPontos(Object.fromEntries(data.pontos.map((p: Ponto) => [p.id, p])));
-        setDbAlertas(Object.fromEntries(data.alertas.map((a: Alerta) => [a.id, a])));
-        setDbRelatos(data.relatos || []);
-      }
-      if (weatherRes.ok) setWeather(await weatherRes.json());
-    } catch (err) {
-      setError('Erro ao carregar dados. Verifique sua conexão.');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
+    let ativo = true;
+
+    async function consultarStatus() {
+      try {
+        const res = await fetch('/api/status', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error(`Status HTTP ${res.status}`);
+
+        const data: StatusResponse = await res.json();
+        if (!ativo) return;
+        setDbPontos(Object.fromEntries(data.pontos.map(p => [p.id, p])));
+        setDbAlertas(Object.fromEntries(data.alertas.map(a => [a.id, a])));
+        setDbRelatos(data.relatos);
+        setLeiturasPorPonto(data.leiturasPorPonto);
+        setError(null);
+      } catch {
+        if (ativo) setError('Consulta aos pontos indisponível. Os dados exibidos podem estar desatualizados.');
+      } finally {
+        if (ativo) setLoading(false);
+      }
+    }
+
+    async function consultarTempo() {
+      try {
+        const res = await fetch('/api/weather', { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) return;
+        const data: WeatherData = await res.json();
+        if (ativo) setWeather(data);
+      } catch {
+        // Mantém a última previsão enquanto a API estiver indisponível.
+      }
+    }
+
+    function atualizarPainel() {
+      void consultarStatus();
+      void consultarTempo();
+    }
+
+    atualizarPainel();
+    const interval = setInterval(atualizarPainel, 60000);
+    return () => {
+      ativo = false;
+      clearInterval(interval);
+    };
   }, []);
 
   function saveLocalRelato(rec: Relato) {
@@ -167,15 +186,16 @@ export default function HomePage() {
   }
 
   function pontosList(): Ponto[] {
-        const baseMap = new Map<string, Ponto>(BASE_PONTOS.map(p => [p.id, p]));
-        Object.entries(dbPontos).forEach(([id, d]) => {
-          const base = baseMap.get(id) || { id, bairro: '', ponto: '', latitude: 0, longitude: 0, status: 'normal' as const, ts: '' };
-          baseMap.set(id, { ...base, ...d, id });
-        });
-        return Array.from(baseMap.values())
-          .filter(p => STATUS[p.status as keyof typeof STATUS] && p.bairro)
-          .sort((a, b) => STATUS[b.status as keyof typeof STATUS].rank - STATUS[a.status as keyof typeof STATUS].rank || a.bairro.localeCompare(b.bairro, 'pt-BR'));
-      }
+    const baseMap = new Map<string, Ponto>(BASE_PONTOS.map(p => [p.id, p]));
+    Object.values(dbPontos).forEach(p => baseMap.set(p.id, p));
+    return Array.from(baseMap.values())
+      .filter(p => p.bairro)
+      .sort((a, b) => {
+        const rankA = a.status ? STATUS[a.status]?.rank ?? -1 : -1;
+        const rankB = b.status ? STATUS[b.status]?.rank ?? -1 : -1;
+        return rankB - rankA || a.bairro.localeCompare(b.bairro, 'pt-BR');
+      });
+  }
 
   function alertasList(): Alerta[] {
     const map = new Map<string, Alerta>();
@@ -186,17 +206,22 @@ export default function HomePage() {
       .slice(0, 12);
   }
 
+  const pontos = pontosList();
+  const statusBanner = pontos.find(p => p.status && STATUS[p.status])?.status;
+
   function renderBannerContent() {
-    const ps = pontosList();
+    const key = statusBanner;
     const as = alertasList();
-    const worst = Math.max(...ps.map(p => STATUS[p.status as keyof typeof STATUS].rank));
-    const hot = ps.filter(p => STATUS[p.status as keyof typeof STATUS].rank === worst);
-    const key = worst === 2 ? 'vermelho' : worst === 1 ? 'atencao' : 'normal';
+    const hot = pontos.filter(p => p.status === key);
     const names = listJoin(hot.map(p => p.bairro));
-    const head = worst === 0 ? 'Todos os pontos estão normais' : `${STATUS[key as keyof typeof STATUS].label} em ${names}`;
-    const latest = as.find(a => hot.some(p => p.bairro === a.bairro) && NIVEL[a.nivel as keyof typeof NIVEL].status === key);
-    const detail = worst === 0 ? 'Nenhum ponto monitorado pede cuidado agora. Volte aqui para ver novos avisos.' : (latest?.descricao || 'Fique atento e evite áreas alagadas.');
-    const last = Math.max(...ps.map(p => Date.parse(p.ts || '') || 0));
+    const head = key ? `${STATUS[key].label} em ${names}` : 'Situação dos pontos indisponível';
+    const latest = as.find(a => hot.some(p => p.bairro === a.bairro) && NIVEL[a.nivel].status === key);
+    const detail = latest?.descricao ?? 'Consulte os avisos e acompanhe os comunicados da Defesa Civil.';
+    const last = Math.max(0, ...pontos.map(p => Date.parse(p.ts || '') || 0));
+    const ultimaLeitura = Object.values(leiturasPorPonto).reduce<StatusResponse['leiturasPorPonto'][string] | undefined>(
+      (maisRecente, leitura) => !maisRecente || leitura.coletadoEm > maisRecente.coletadoEm ? leitura : maisRecente,
+      undefined,
+    );
         const msg = `Alerta Enchentes Itajubá · ${head}. ${detail} Em emergência, ligue 199 (Defesa Civil).`;
 
         return (
@@ -210,8 +235,19 @@ export default function HomePage() {
                 const ok = await copyText(msg);
                 alert(ok ? 'Mensagem copiada' : 'Não foi possível copiar');
               }}>Copiar mensagem</button>
-              {last && <time>Última atualização {when(new Date(last).toISOString())}</time>}
+              {last > 0 && <time dateTime={new Date(last).toISOString()}>Última alteração dos pontos {when(new Date(last).toISOString())}</time>}
             </div>
+            {ultimaLeitura && (
+              <p>Última leitura de estação <time dateTime={ultimaLeitura.coletadoEm}>{when(ultimaLeitura.coletadoEm)}</time>
+                {ultimaLeitura.desatualizada && ' · desatualizada'}
+              </p>
+            )}
+            {error && <p role="status">{error}</p>}
+            {weather && (
+              <p>Meteorologia · {weather.provider} · {medida.format(weather.rainMm)} mm de chuva observada ·
+                probabilidade máxima nas próximas 6 h de {weather.next6hMaxProbability}%. {weather.disclaimer}
+              </p>
+            )}
           </>
         );
   }
@@ -332,7 +368,7 @@ export default function HomePage() {
   if (loading) {
     return (
       <div className="page" style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="staff" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px solid var(--ink)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
+        <div role="status" aria-label="Carregando painel" style={{ width: '48px', height: '48px', borderRadius: '50%', border: '4px solid var(--ink)', borderTopColor: 'transparent', animation: 'spin 1s linear infinite' }} />
         <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
@@ -354,29 +390,36 @@ export default function HomePage() {
         </aside>
       </header>
 
-      <section id="banner" className="banner" data-s={(() => {
-        const ps = pontosList();
-        const worst = Math.max(...ps.map(p => STATUS[p.status as keyof typeof STATUS].rank));
-        return worst === 2 ? 'vermelho' : worst === 1 ? 'atencao' : 'normal';
-      })()} aria-live="polite" aria-label="Situação agora">
+      <section id="banner" className="banner" data-s={statusBanner} aria-live="polite" aria-label="Situação agora">
         {renderBannerContent()}
       </section>
 
       <section aria-labelledby="h-pontos">
         <h2 className="sec" id="h-pontos">Pontos de risco</h2>
         <div id="pontos" className="grid">
-          {pontosList().map(p => {
-            const st = STATUS[p.status as keyof typeof STATUS];
+          {pontos.map(p => {
+            const st = p.status && STATUS[p.status];
+            const leitura = leiturasPorPonto[p.id];
             return (
               <article key={p.id} className="ponto" data-s={p.status}>
-                <div className="staff" role="img" aria-label={`Régua do rio: ${st.label}`} style={{ '--lvl': st.lvl } as React.CSSProperties}>
-                  <i />
-                </div>
                 <div className="body">
                   <p className="bairro">{p.bairro}</p>
                   <p className="local">{p.ponto || ''}</p>
-                  <span className="pill">{st.label}</span>
-                  <p className="stamp">Atualizado {when(p.ts)}</p>
+                  {st && <span className="pill">{st.label}</span>}
+                  {p.ts && <p className="stamp">Status em <time dateTime={p.ts}>{when(p.ts)}</time></p>}
+                  {leitura ? (
+                    <div className="leitura">
+                      <p>Chuva na estação <strong>{medida.format(leitura.precipitacaoMm)} mm</strong></p>
+                      {leitura.nivelRioCm !== null && (
+                        <p>Nível do rio na estação <strong>{medida.format(leitura.nivelRioCm)} cm</strong></p>
+                      )}
+                      <p className="stamp">{leitura.estacao} · {leitura.fonte}</p>
+                      <p className="stamp">
+                        Coleta em <time dateTime={leitura.coletadoEm}>{when(leitura.coletadoEm)}</time>
+                        {leitura.desatualizada && <strong> · Desatualizada</strong>}
+                      </p>
+                    </div>
+                  ) : <p className="leitura stamp">Sem leitura de estação disponível.</p>}
                   {isAdmin && (
                     <label className="team-set" htmlFor={`set-${p.id}`}>
                       Alterar status (equipe)
@@ -541,22 +584,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Weather info appended to banner */}
-      {weather && (
-        <script dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              var banner = document.getElementById('banner');
-              if (banner && !banner.querySelector('.weather-note')) {
-                var p = document.createElement('p');
-                p.className = 'sec-note weather-note';
-                p.textContent = 'Meteorologia · Open-Meteo · ${weather.rainMm} mm de chuva observada · probabilidade máx. nas próximas 6h: ${weather.next6hMaxProbability}%. ${weather.disclaimer}';
-                banner.appendChild(p);
-              }
-            })();
-          `
-        }} />
-      )}
     </div>
   );
 }

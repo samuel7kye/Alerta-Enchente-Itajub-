@@ -81,6 +81,7 @@ async function main() {
       
       weatherData.push({
         stationId: station.id,
+        fonte: 'simulacao',
         precipitacaoMm: Math.round(rainMm * 10) / 10,
         nivelRioCm: Math.round(nivelRio * 10) / 10,
         status,

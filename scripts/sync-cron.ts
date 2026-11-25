@@ -51,7 +51,7 @@ async function main() {
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log(`\n⏱️  Intervalo: ${INTERVALO_MINUTOS} minutos`);
   console.log(`🔐 CRON_SECRET: ${CRON_SECRET.substring(0, 8)}...`);
-  console.log(`🌐 Banco: ${process.env.DATABASE_URL || 'file:./dev.db'}\n`);
+  console.log(`🌐 DATABASE_URL: ${process.env.DATABASE_URL ? 'configurada' : 'ausente'}\n`);
 
   // Executar imediatamente na inicialização
   await executarSincronizacao();

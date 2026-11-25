@@ -9,7 +9,7 @@ Sistema comunitário de monitoramento e alertas de risco de enchentes em Itajub�
 ## 📋 Funcionalidades
 
 - **Painel de situação em tempo real** — Faixa superior colorida (verde/amarelo/vermelho) indicando o pior status entre os pontos monitorados
-- **Pontos de risco com régua linimétrica** — 3 pontos monitorados (Varginha/Rio Sapucaí, Medicina/Ribeirão José Pereira, São Sebastião/Ribeirão Anhumas) com barra visual de nível do rio
+- **Leituras nos pontos de risco** — A consulta a cada minuto exibe chuva, nível do rio quando medido, fonte e horário da coleta da estação associada pelo bairro. Leituras com duas horas ou mais aparecem como desatualizadas.
 - **Avisos oficiais (área administrativa)** — Publicação de alertas por nível (verde/amarelo/vermelho) com atualização automática do status do ponto
 - **Relatos da comunidade** — Moradores enviam relatos com bairro, tipo (rua alagada, rio subindo, bueiro entupido, etc.), descrição e foto opcional
 - **Meteorologia automatizada** — Integração com **Open-Meteo** (chuva atual, previsão 6h, probabilidade) com cache de 10 min
@@ -27,7 +27,7 @@ Sistema comunitário de monitoramento e alertas de risco de enchentes em Itajub�
 | **Frontend** | Next.js 14 (App Router), React 18, TypeScript |
 | **Estilos** | CSS customizado (CSS Variables) + TailwindCSS 3 |
 | **Backend/API** | Next.js Route Handlers (API Routes) |
-| **Persistência** | Arquivo JSON local (`data.json`) — simula banco de dados |
+| **Persistência** | PostgreSQL (Neon) com Prisma |
 | **Meteorologia** | Open-Meteo API (gratuita, sem chave) |
 | **Fontes** | Archivo (display), Source Sans 3 (corpo), IBM Plex Mono (monoespaçada) |
 
@@ -49,9 +49,7 @@ cd "Site Alerta Enchente"
 # Instale dependências
 npm install
 
-# Configure variáveis de ambiente (opcional)
-cp .env.example .env.local
-# Edite .env.local e defina ADMIN_TOKEN para habilitar a área administrativa
+# Crie .env na raiz e configure DATABASE_URL conforme a seção abaixo
 
 # Rode em desenvolvimento
 npm run dev
@@ -70,15 +68,15 @@ npm start
 
 ## ⚙️ Variáveis de ambiente
 
-Crie um arquivo `.env.local` na raiz:
+Crie um arquivo `.env` na raiz:
 
 ```env
+# Conexão PostgreSQL usada pelo Prisma
+DATABASE_URL=postgresql://usuario:senha@host/banco?sslmode=require
+
 # Token para acesso à área administrativa (painel de alertas)
 # Gere uma string aleatória segura: openssl rand -hex 32
 ADMIN_TOKEN=seu-token-seguro-aqui
-
-# Caminho alternativo para o arquivo de dados (opcional)
-# DATA_FILE=C:/caminho/absoluto/para/data.json
 ```
 
 > **Nota**: Sem `ADMIN_TOKEN`, a área administrativa fica desabilitada (segurança).
@@ -89,8 +87,9 @@ ADMIN_TOKEN=seu-token-seguro-aqui
 
 ```
 site-alerta-enchente/
-├── public/
-│   └── index.html          # Versão estática original (referência)
+├── prisma/
+│   ├── schema.prisma      # Modelos PostgreSQL
+│   └── seed.ts            # Carga inicial
 ├── src/
 │   ├── app/
 │   │   ├── api/            # API Routes (backend)
@@ -102,15 +101,14 @@ site-alerta-enchente/
 │   │   │   ├── admin/
 │   │   │   │   └── session/ # Autenticação admin
 │   │   │   └── pontos/[id]/ # PATCH status do ponto (admin)
-│   │   ├── globals.css     # Estilos completos (idênticos ao index.html)
+│   │   ├── globals.css     # Estilos do painel
 │   │   ├── layout.tsx      # Layout raiz + fontes Google Fonts
 │   │   └── page.tsx        # Dashboard principal (Client Component)
 │   ├── lib/
-│   │   ├── data.ts         # Persistência em data.json (thread-safe)
+│   │   ├── prisma.ts       # Cliente PostgreSQL
 │   │   └── weather.ts      # Cache + fetch Open-Meteo
 │   └── types/
 │       └── index.ts        # Tipos TypeScript (Ponto, Alerta, Relato, Weather)
-├── data.json               # Banco de dados local (pontos, alertas, relatos)
 ├── package.json
 ├── tsconfig.json
 ├── tailwind.config.js
@@ -127,7 +125,7 @@ site-alerta-enchente/
 | Método | Rota | Descrição | Auth |
 |--------|------|-----------|------|
 | `GET` | `/api/health` | Health check | — |
-| `GET` | `/api/status` | Lista pontos, alertas, relatos | — |
+| `GET` | `/api/status` | Lista pontos, alertas, relatos e últimas leituras por ID do ponto (`leiturasPorPonto`) | — |
 | `GET` | `/api/weather` | Dados meteorológicos (cache 10min) | — |
 | `POST` | `/api/relatos` | Enviar relato da comunidade | — |
 | `POST` | `/api/alertas` | Publicar alerta oficial | Bearer `ADMIN_TOKEN` |
